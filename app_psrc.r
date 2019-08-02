@@ -7,6 +7,7 @@ library(leaflet)
 library(data.table)
 library(DT)
 library(odbc)
+library(DBI)
 
 #global variables ####
 
@@ -17,7 +18,15 @@ zoom_level <- 11
 
 
 #read data
-df <- fread("fake_data.txt",na.strings=c("","NA"))
+hhts19_con <- dbConnect(odbc(),
+                        driver = "SQL Server",
+                        server = "AWS-PROD-SQL\\Coho",
+                        database = "HouseholdTravelSurvey2019",
+                        trusted_connection = "yes"
+)
+
+trip_tbl <- dbReadTable(hhts19_con, "4_Trip")
+
 #count number of days for each person
 df <- ddply(df,.(person_id),transform, days = length(unique(day_number)))
 
@@ -32,9 +41,7 @@ ui <- dashboardPage(
   dashboardSidebar(collapsed = TRUE,
                    sidebarMenu(
                      menuItem("Trips", tabName = "main_tab", icon = icon("map")),
-                     menuItem("About", tabName = "about_tab", icon = icon("info-circle")),
-                     menuItem("Source code", icon = icon("github"), 
-                              href = githubrepo)
+                     menuItem("About", tabName = "about_tab", icon = icon("info-circle"))
                    )
   ),
   
