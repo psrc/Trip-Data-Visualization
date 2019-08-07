@@ -26,7 +26,13 @@ hhts19_con <- dbConnect(odbc(),
                         trusted_connection = "yes"
 )
 
-trip_tbl <- dbReadTable(hhts19_con, "4_Trip")
+trip_tbl <- dbReadTable(hhts19_con, "4_Trip") %>% 
+  subset(., 
+         select = c('hhid', 'personid', 'daynum', 'tripid', 'tripnum', 'o_purp_cat', 'd_purp_cat',
+         'depart_time_hhmm', 'arrival_time_hhmm', 'mode_1', 'd_purpose',
+         'origin_lat', 'origin_lng', 'dest_lat', 'dest_lng'))
+
+trip_tbl <- trip_tbl[1:10000, ]
 
 dbDisconnect(hhts19_con)
 
