@@ -1,6 +1,7 @@
 library(shiny)
 library(shinydashboard)
 library(plyr)
+library(dplyr)
 library(tidyverse)
 library(plotly)
 library(leaflet)
@@ -17,7 +18,7 @@ map_url_google <-"https://mts1.google.com/vt/lyrs=m&hl=en&src=app&x={x}&y={y}&z=
 zoom_level <- 11
 
 
-#read data
+#read data from SQL Server
 hhts19_con <- dbConnect(odbc(),
                         driver = "SQL Server",
                         server = "AWS-PROD-SQL\\Coho",
@@ -27,12 +28,15 @@ hhts19_con <- dbConnect(odbc(),
 
 trip_tbl <- dbReadTable(hhts19_con, "4_Trip")
 
+dbDisconnect(hhts19_con)
+
+
 #count number of days for each person
-df <- ddply(df,.(person_id),transform, days = length(unique(day_number)))
+trip_tbl <- ddply(trip_tbl,.(personid),transform, days = length(unique(daynum)))
 
 #define list of person ids and the number of travel days
 #this is used later to define the conditional selection of days
-pers_days <- unique(df[c("person_id", "days")])
+pers_days <- unique(trip_tbl[c("personid", "days")])
 
 # UI side ####
 
@@ -52,16 +56,16 @@ ui <- dashboardPage(
       tags$div(tags$style(HTML( ".selectize-dropdown, .selectize-dropdown.form-control{z-index:10000;}"))), #to show dropdown menu in front of the map
       box(title = 'Select/Enter Person ID:', status = 'primary', solidHeader = TRUE,
         selectInput(
-          inputId ='person_id'
+          inputId ='personid'
           ,label =''
-          ,choices = df$person_id
+          ,choices = trip_tbl$personid
           ,selected= 1
         )
         
       ),
       
       box(title = 'Select Diary Day:', status = 'primary', solidHeader = TRUE,
-        uiOutput('day_number') #use uiOutput along with renderUI to condition day_number choices on person_id
+        uiOutput('daynum') #use uiOutput along with renderUI to condition daynum choices on personid
       ),
       
       box(width = 12,
@@ -107,11 +111,11 @@ server <- function(input, output, session) {
     
     #create a variable containg maxdays to condition day input choices
     maxdays <- reactive({
-      pers_days$days[pers_days$person_id==input$person_id]
+      pers_days$days[pers_days$personid==input$personid]
     })
     
-    #creating day_number selectInput based on UiOutput
-    output$day_number <- renderUI({
+    #creating daynum selectInput based on UiOutput
+    output$daynum <- renderUI({
       selectInput(inputId ='day_x',label = '', choices=seq(1,maxdays()))
     })
     
@@ -123,15 +127,15 @@ server <- function(input, output, session) {
     })
   
   #subset data based on selection inputs
-  df_sub <-  reactive({
-    subset(df, df$person_id==input$person_id & df$day_number==day())
+  trip_sub <-  reactive({
+    subset(trip_tbl, trip_tbl$personid==input$personid & trip_tbl$daynum==day())
   })
   
   
   output$table01 <- DT::renderDataTable({
     DT::datatable(
-      df_sub()[c('household_id','person_id', 'trip_id', 'trip_sequence', 'start', 'end',
-                 'start_time', 'end_time', 'mode', 'purpose')]
+      trip_sub()[c('hhid', 'personid', 'tripid', 'tripnum', 'o_purp_cat', 'd_purp_cat',
+                 'depart_time_hhmm', 'arrival_time_hhmm', 'mode_1', 'd_purpose')]
       ,selection = "single"
       ,rownames=FALSE
       ,options=list(stateSave = TRUE, dom = 't')
@@ -142,8 +146,8 @@ server <- function(input, output, session) {
   
   
   output$map01 <- renderLeaflet({
-    leaflet(data = df_sub()) %>%
-      setView(lng = mean(df_sub()$start_lon), lat = mean(df_sub()$start_lat), zoom = zoom_level) %>%
+    leaflet(data = trip_sub()) %>%
+      setView(lng = mean(trip_sub()$origin_lng), lat = mean(trip_sub()$origin_lat), zoom = zoom_level) %>%
       addTiles(urlTemplate= map_url_google, group = 'Google Maps')%>%
       #another option for the base layer (light background)
       addProviderTiles(providers$Esri.WorldGrayCanvas, group = 'Esri Canvas') %>% #CartoDB.Positron
@@ -154,15 +158,15 @@ server <- function(input, output, session) {
       )
   })
   
-  #update map to plot markers and polylines for each person_id/day
+  #update map to plot markers and polylines for each personid/day
   observe({
     leafletProxy("map01") %>%
       clearShapes() %>% 
-      addMarkers(data=df_sub()
-                 ,lng= df_sub()$start_lon
-                 ,lat = df_sub()$start_lat
-                 ,layerId = df_sub()$trip_id
-                 ,label = paste0("", df_sub()$start)
+      addMarkers(data=trip_sub()
+                 ,lng= trip_sub()$origin_lng
+                 ,lat = trip_sub()$origin_lat
+                 ,layerId = trip_sub()$tripid
+                 ,label = paste0("", trip_sub()$o_purp_cat)
                  ,labelOptions= labelOptions(direction = 'auto', noHide=F)
       )
   })
@@ -179,29 +183,29 @@ server <- function(input, output, session) {
   observe({
   if(!is.null(row_selected())){
   observeEvent(input$table01_rows_selected, {
-    row_selected <- df_sub()[input$table01_rows_selected,]
+    row_selected <- trip_sub()[input$table01_rows_selected,]
 
     leafletProxy("map01") %>%
-      addAwesomeMarkers(data = subset(df_sub(), df_sub()$trip_id==input$table01_rows_selected)
-                 ,lng= row_selected$start_lon
-                 ,lat =row_selected$start_lat
+      addAwesomeMarkers(data = subset(trip_sub(), trip_sub()$tripid==input$table01_rows_selected)
+                 ,lng= row_selected$origin_lng
+                 ,lat =row_selected$origin_lat
                  ,layerId = "highlighted_marker_start"
-                 ,label = paste0("", row_selected$start)
+                 ,label = paste0("", row_selected$o_purp_cat)
                  ,labelOptions= labelOptions(direction = 'auto', noHide=F)
                  ,icon=start_icon
                  ,options = markerOptions(riseOnHover = TRUE))  %>%
-      addAwesomeMarkers(data = subset(df_sub(), df_sub()$trip_id==input$table01_rows_selected)
-                        ,lng= row_selected$end_lon
-                        ,lat =row_selected$end_lat
+      addAwesomeMarkers(data = subset(trip_sub(), trip_sub()$tripid==input$table01_rows_selected)
+                        ,lng= row_selected$dest_lng
+                        ,lat =row_selected$dest_lat
                         ,layerId = "highlighted_marker_end"
-                        ,label = paste0("", row_selected$end)
+                        ,label = paste0("", row_selected$d_purp_cat)
                         ,labelOptions= labelOptions(direction = 'auto', noHide=F)
                         ,icon=end_icon
                         ,options = markerOptions(riseOnHover = TRUE))  %>%
-    fitBounds(lng1 = min(row_selected$start_lon, row_selected$end_lon)*0.9996,
-              lng2 = max(row_selected$start_lon, row_selected$end_lon)*1.0004,
-              lat1 = min(row_selected$start_lat,  row_selected$end_lat)*0.9996,
-              lat2 = max(row_selected$start_lat,  row_selected$end_lat)*1.0004)
+    fitBounds(lng1 = min(row_selected$origin_lng, row_selected$dest_lng)*0.9996,
+              lng2 = max(row_selected$origin_lng, row_selected$dest_lng)*1.0004,
+              lat1 = min(row_selected$origin_lat,  row_selected$dest_lat)*0.9996,
+              lat2 = max(row_selected$origin_lat,  row_selected$dest_lat)*1.0004)
   })
  
   }else{
@@ -217,7 +221,7 @@ server <- function(input, output, session) {
   observe({
     input$reset_button
     leafletProxy("map01") %>%
-      setView(lng = mean(df_sub()$start_lon), lat = mean(df_sub()$start_lat), zoom = zoom_level)
+      setView(lng = mean(trip_sub()$origin_lng), lat = mean(trip_sub()$origin_lat), zoom = zoom_level)
   })
   
   #clear selection
