@@ -26,13 +26,18 @@ hhts19_con <- dbConnect(odbc(),
                         trusted_connection = "yes"
 )
 
-trip_tbl <- dbReadTable(hhts19_con, "4_Trip") %>% 
-  subset(., 
-         select = c('hhid', 'personid', 'daynum', 'tripid', 'tripnum', 'o_purp_cat', 'd_purp_cat',
-         'depart_time_hhmm', 'arrival_time_hhmm', 'mode_1', 'd_purpose',
-         'origin_lat', 'origin_lng', 'dest_lat', 'dest_lng'))
+trip_tbl <- dbGetQuery(hhts19_con, "SELECT TOP 10000 hhid, personid, daynum, tripid, tripnum,
+                                    o_purp_cat, d_purp_cat, depart_time_hhmm, arrival_time_hhmm,
+                                    mode_type, d_purpose, origin_lat, origin_lng, dest_lat, dest_lng
+                                    FROM HHSurvey.ResolvedTrip")
 
-trip_tbl <- trip_tbl[1:10000, ]
+#trip_tbl <- dbReadTable(hhts19_con, "4_Trip") %>% 
+#  subset(., 
+#         select = c('hhid', 'personid', 'daynum', 'tripid', 'tripnum', 'o_purp_cat', 'd_purp_cat',
+#         'depart_time_hhmm', 'arrival_time_hhmm', 'mode_1', 'd_purpose',
+#         'origin_lat', 'origin_lng', 'dest_lat', 'dest_lng'))
+
+#trip_tbl <- trip_tbl[1:10000, ]
 
 dbDisconnect(hhts19_con)
 
@@ -141,10 +146,12 @@ server <- function(input, output, session) {
   output$table01 <- DT::renderDataTable({
     DT::datatable(
       trip_sub()[c('hhid', 'personid', 'tripid', 'tripnum', 'o_purp_cat', 'd_purp_cat',
-                 'depart_time_hhmm', 'arrival_time_hhmm', 'mode_1', 'd_purpose')]
+                 'depart_time_hhmm', 'arrival_time_hhmm', 'mode_type', 'd_purpose')]
       ,selection = "single"
       ,rownames=FALSE
-      ,options=list(stateSave = TRUE, dom = 't')
+      ,options=list(stateSave = TRUE, 
+                    dom = 't', 
+                    order = list(3, 'asc'))
       ,colnames = c('Household Id', 'Person Id', 'Trip Id', 'Trip Sequence', 'Trip Origin','Trip Destination',
                     'Departure Time', 'Arrival Time', 'Travel Mode', 'Trip Purpose')
     )
