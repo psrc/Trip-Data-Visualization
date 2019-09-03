@@ -26,18 +26,23 @@ hhts19_con <- dbConnect(odbc(),
                         trusted_connection = "yes"
 )
 
-trip_tbl <- dbGetQuery(hhts19_con, "SELECT TOP 10000 hhid, personid, daynum, tripid, tripnum,
-                                    o_purp_cat, d_purp_cat, depart_time_hhmm, arrival_time_hhmm,
-                                    mode_type, d_purpose, origin_lat, origin_lng, dest_lat, dest_lng
-                                    FROM HHSurvey.ResolvedTrip")
-
-#trip_tbl <- dbReadTable(hhts19_con, "4_Trip") %>% 
-#  subset(., 
-#         select = c('hhid', 'personid', 'daynum', 'tripid', 'tripnum', 'o_purp_cat', 'd_purp_cat',
-#         'depart_time_hhmm', 'arrival_time_hhmm', 'mode_1', 'd_purpose',
-#         'origin_lat', 'origin_lng', 'dest_lat', 'dest_lng'))
-
-#trip_tbl <- trip_tbl[1:10000, ]
+trip_tbl <- dbGetQuery(hhts19_con, "SELECT rt.hhid,
+                                           rt.personid,
+                                           rt.daynum,
+                                           rt.tripid,
+                                           rt.tripnum,
+                                           df.o_purpose,
+                                           df.d_purpose,
+                                           df.depart_dhm,
+                                           df.arrive_dhm,
+                                           rt.mode_type,
+                                           rt.origin_lat,
+                                           rt.origin_lng,
+                                           rt.dest_lat,
+                                           rt.dest_lng
+                                    FROM HHSurvey.ResolvedTrip AS rt
+                                    INNER JOIN HHSurvey.data2fixie AS df
+                                        ON df.recid = rt.recid")
 
 dbDisconnect(hhts19_con)
 
@@ -52,7 +57,7 @@ pers_days <- unique(trip_tbl[c("personid", "days")])
 # UI side ####
 
 ui <- dashboardPage(
-  dashboardHeader(title = "Trip Data Visualization", titleWidth = 250),
+  dashboardHeader(title = "Trip Origin-Destinationsy", titleWidth = 250),
   dashboardSidebar(collapsed = TRUE,
                    sidebarMenu(
                      menuItem("Trips", tabName = "main_tab", icon = icon("map")),
@@ -145,15 +150,15 @@ server <- function(input, output, session) {
   
   output$table01 <- DT::renderDataTable({
     DT::datatable(
-      trip_sub()[c('hhid', 'personid', 'tripid', 'tripnum', 'o_purp_cat', 'd_purp_cat',
-                 'depart_time_hhmm', 'arrival_time_hhmm', 'mode_type', 'd_purpose')]
+      trip_sub()[c('hhid', 'personid', 'tripid', 'tripnum', 'o_purpose', 'd_purpose',
+                 'depart_dhm', 'arrive_dhm', 'mode_type')]
       ,selection = "single"
       ,rownames=FALSE
       ,options=list(stateSave = TRUE, 
                     dom = 't', 
                     order = list(3, 'asc'))
       ,colnames = c('Household Id', 'Person Id', 'Trip Id', 'Trip Sequence', 'Trip Origin','Trip Destination',
-                    'Departure Time', 'Arrival Time', 'Travel Mode', 'Trip Purpose')
+                    'Departure Time', 'Arrival Time', 'Travel Mode')
     )
   })
   
@@ -175,11 +180,11 @@ server <- function(input, output, session) {
   observe({
     leafletProxy("map01") %>%
       clearShapes() %>% 
-      addMarkers(data=trip_sub()
+      addCircleMarkers(data=trip_sub()
                  ,lng= trip_sub()$origin_lng
                  ,lat = trip_sub()$origin_lat
                  ,layerId = trip_sub()$tripid
-                 ,label = paste0("", trip_sub()$o_purp_cat)
+                 ,label = paste0("", trip_sub()$o_purpose)
                  ,labelOptions= labelOptions(direction = 'auto', noHide=F)
       )
   })
@@ -203,7 +208,7 @@ server <- function(input, output, session) {
                  ,lng= row_selected$origin_lng
                  ,lat =row_selected$origin_lat
                  ,layerId = "highlighted_marker_start"
-                 ,label = paste0("", row_selected$o_purp_cat)
+                 ,label = paste0("", row_selected$o_purpose)
                  ,labelOptions= labelOptions(direction = 'auto', noHide=F)
                  ,icon=start_icon
                  ,options = markerOptions(riseOnHover = TRUE))  %>%
@@ -211,7 +216,7 @@ server <- function(input, output, session) {
                         ,lng= row_selected$dest_lng
                         ,lat =row_selected$dest_lat
                         ,layerId = "highlighted_marker_end"
-                        ,label = paste0("", row_selected$d_purp_cat)
+                        ,label = paste0("", row_selected$d_purpose)
                         ,labelOptions= labelOptions(direction = 'auto', noHide=F)
                         ,icon=end_icon
                         ,options = markerOptions(riseOnHover = TRUE))  %>%
