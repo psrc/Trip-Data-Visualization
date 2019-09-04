@@ -26,11 +26,12 @@ hhts19_con <- dbConnect(odbc(),
                         trusted_connection = "yes"
 )
 
-trip_tbl <- dbGetQuery(hhts19_con, "SELECT rt.hhid,
-                                           rt.personid,
-                                           rt.daynum,
+trip_tbl <- dbGetQuery(hhts19_con, "SELECT TOP 10000
+                                           df.hhid,
+                                           df.personid,
+                                           df.daynum,
                                            rt.tripid,
-                                           rt.tripnum,
+                                           df.tripnum,
                                            df.o_purpose,
                                            df.d_purpose,
                                            df.depart_dhm,
@@ -129,11 +130,21 @@ server <- function(input, output, session) {
     maxdays <- reactive({
       pers_days$days[pers_days$personid==input$personid]
     })
-    
+      
     #creating daynum selectInput based on UiOutput
     output$daynum <- renderUI({
       selectInput(inputId ='day_x',label = '', choices=seq(1,maxdays()))
     })
+
+    # Trying something else
+#    maxdays <- reactive({
+#      unique(pers_days$daynum[pers_days$personid==input$personid])
+#    })
+    
+    #creating daynum selectInput based on UiOutput
+#    output$daynum <- renderUI({
+#      selectInput(inputId = 'day_x', label = '', choices = maxdays())
+#    })
     
   #the app is initiated with a NULL value for conditions based on renderUI  
   #create a 'day' variable to store the input day 
